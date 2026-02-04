@@ -1,0 +1,673 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sea Wolf Storm — Swarm & Boids</title>
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&family=Raleway:wght@200;300;400&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            overflow: hidden;
+            background: #020818;
+            font-family: 'Raleway', sans-serif;
+        }
+
+        canvas {
+            display: block;
+            position: fixed;
+            top: 0;
+            left: 0;
+        }
+
+        .overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            background: 
+                radial-gradient(ellipse at 50% 0%, rgba(0, 80, 120, 0.15) 0%, transparent 50%),
+                radial-gradient(ellipse at 100% 100%, rgba(0, 40, 80, 0.2) 0%, transparent 40%),
+                radial-gradient(ellipse at 0% 80%, rgba(20, 60, 100, 0.15) 0%, transparent 35%);
+            z-index: 1;
+        }
+
+        .vignette {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            box-shadow: inset 0 0 200px rgba(0, 0, 0, 0.8);
+            z-index: 2;
+        }
+
+        .title-container {
+            position: fixed;
+            top: 40px;
+            left: 50%;
+            transform: translateX(-50%);
+            text-align: center;
+            z-index: 10;
+            pointer-events: none;
+            animation: fadeIn 2s ease-out;
+        }
+
+        .title {
+            font-family: 'Cinzel', serif;
+            font-size: clamp(28px, 5vw, 48px);
+            font-weight: 700;
+            color: transparent;
+            background: linear-gradient(135deg, #4ecdc4 0%, #7fdbda 30%, #a8e6cf 60%, #4ecdc4 100%);
+            background-clip: text;
+            -webkit-background-clip: text;
+            text-shadow: 0 0 60px rgba(78, 205, 196, 0.4);
+            letter-spacing: 0.15em;
+            text-transform: uppercase;
+        }
+
+        .subtitle {
+            font-size: clamp(11px, 1.5vw, 14px);
+            font-weight: 200;
+            color: rgba(160, 200, 220, 0.7);
+            letter-spacing: 0.4em;
+            text-transform: uppercase;
+            margin-top: 12px;
+        }
+
+        .info-panel {
+            position: fixed;
+            bottom: 40px;
+            left: 50%;
+            transform: translateX(-50%);
+            text-align: center;
+            z-index: 10;
+            pointer-events: none;
+            animation: fadeIn 2.5s ease-out 0.5s both;
+        }
+
+        .info-text {
+            font-size: 12px;
+            font-weight: 300;
+            color: rgba(120, 180, 200, 0.6);
+            letter-spacing: 0.2em;
+        }
+
+        .storm-indicator {
+            position: fixed;
+            bottom: 80px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            z-index: 10;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.8s ease;
+        }
+
+        .storm-indicator.active {
+            opacity: 1;
+        }
+
+        .storm-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: radial-gradient(circle, #4ecdc4 0%, #26a69a 100%);
+            box-shadow: 0 0 20px rgba(78, 205, 196, 0.6);
+            animation: pulse 1.5s ease-in-out infinite;
+        }
+
+        .storm-label {
+            font-size: 11px;
+            font-weight: 400;
+            color: rgba(78, 205, 196, 0.8);
+            letter-spacing: 0.3em;
+            text-transform: uppercase;
+        }
+
+        .stats {
+            position: fixed;
+            top: 40px;
+            right: 40px;
+            text-align: right;
+            z-index: 10;
+            pointer-events: none;
+            animation: fadeIn 2s ease-out 1s both;
+        }
+
+        .stat-item {
+            font-size: 11px;
+            font-weight: 300;
+            color: rgba(100, 160, 180, 0.5);
+            letter-spacing: 0.15em;
+            margin-bottom: 8px;
+        }
+
+        .stat-value {
+            color: rgba(160, 220, 230, 0.7);
+            font-weight: 400;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateX(-50%) translateY(-10px); }
+            to { opacity: 1; transform: translateX(-50%) translateY(0); }
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); opacity: 0.8; }
+            50% { transform: scale(1.3); opacity: 1; }
+        }
+
+        .caustics {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            opacity: 0.03;
+            z-index: 1;
+            background: 
+                repeating-conic-gradient(from 0deg at 20% 30%, transparent 0deg, rgba(150, 220, 255, 0.3) 1deg, transparent 2deg),
+                repeating-conic-gradient(from 45deg at 70% 60%, transparent 0deg, rgba(150, 220, 255, 0.2) 1deg, transparent 3deg),
+                repeating-conic-gradient(from 90deg at 40% 80%, transparent 0deg, rgba(150, 220, 255, 0.25) 0.5deg, transparent 1.5deg);
+            animation: caustics 15s linear infinite;
+        }
+
+        @keyframes caustics {
+            0% { transform: translate(0, 0) scale(1); }
+            50% { transform: translate(-2%, -1%) scale(1.02); }
+            100% { transform: translate(0, 0) scale(1); }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    <div class="overlay"></div>
+    <div class="caustics"></div>
+    <div class="vignette"></div>
+
+    <div class="title-container">
+        <h1 class="title">Sea Wolf Storm</h1>
+        <p class="subtitle">Swarm Intelligence & Emergent Behavior</p>
+    </div>
+
+    <div class="stats">
+        <div class="stat-item">Agents: <span class="stat-value" id="agentCount">150</span></div>
+        <div class="stat-item">Cohesion: <span class="stat-value">Active</span></div>
+        <div class="stat-item">Separation: <span class="stat-value">Active</span></div>
+        <div class="stat-item">Alignment: <span class="stat-value">Active</span></div>
+    </div>
+
+    <div class="storm-indicator" id="stormIndicator">
+        <div class="storm-dot"></div>
+        <span class="storm-label">Following</span>
+    </div>
+
+    <div class="info-panel">
+        <p class="info-text">移动鼠标引导鱼群 • Move cursor to guide the school</p>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        let width, height;
+        let mouseX = 0, mouseY = 0;
+        let lastMouseMove = 0;
+        let stormActive = false;
+        let stormIntensity = 0;
+        let stormX, stormY;
+
+        const BOID_COUNT = 150;
+        const boids = [];
+
+        // Boid parameters
+        const PERCEPTION_RADIUS = 80;
+        const SEPARATION_RADIUS = 35;
+        const MAX_SPEED = 4;
+        const MAX_FORCE = 0.15;
+        const STORM_RADIUS = 180;
+        const STORM_FORCE = 2.5;
+
+        // Colors
+        const fishColors = [
+            { body: '#4ecdc4', fin: '#26a69a', glow: 'rgba(78, 205, 196, 0.3)' },
+            { body: '#7fdbda', fin: '#4db6ac', glow: 'rgba(127, 219, 218, 0.3)' },
+            { body: '#a8e6cf', fin: '#66bb6a', glow: 'rgba(168, 230, 207, 0.3)' },
+            { body: '#88d8b0', fin: '#4caf50', glow: 'rgba(136, 216, 176, 0.3)' },
+            { body: '#c5e8d5', fin: '#81c784', glow: 'rgba(197, 232, 213, 0.25)' },
+        ];
+
+        class Boid {
+            constructor() {
+                this.position = { x: Math.random() * width, y: Math.random() * height };
+                this.velocity = { 
+                    x: (Math.random() - 0.5) * 4, 
+                    y: (Math.random() - 0.5) * 4 
+                };
+                this.acceleration = { x: 0, y: 0 };
+                this.size = 8 + Math.random() * 6;
+                this.colorIndex = Math.floor(Math.random() * fishColors.length);
+                this.tailPhase = Math.random() * Math.PI * 2;
+                this.tailSpeed = 0.15 + Math.random() * 0.1;
+            }
+
+            edges() {
+                const margin = 50;
+                const turnForce = 0.3;
+
+                if (this.position.x < margin) this.acceleration.x += turnForce;
+                if (this.position.x > width - margin) this.acceleration.x -= turnForce;
+                if (this.position.y < margin) this.acceleration.y += turnForce;
+                if (this.position.y > height - margin) this.acceleration.y -= turnForce;
+            }
+
+            align(boids) {
+                let steering = { x: 0, y: 0 };
+                let total = 0;
+
+                for (let other of boids) {
+                    let d = this.distance(other);
+                    if (other !== this && d < PERCEPTION_RADIUS) {
+                        steering.x += other.velocity.x;
+                        steering.y += other.velocity.y;
+                        total++;
+                    }
+                }
+
+                if (total > 0) {
+                    steering.x /= total;
+                    steering.y /= total;
+                    steering = this.setMagnitude(steering, MAX_SPEED);
+                    steering.x -= this.velocity.x;
+                    steering.y -= this.velocity.y;
+                    steering = this.limit(steering, MAX_FORCE);
+                }
+
+                return steering;
+            }
+
+            cohesion(boids) {
+                let steering = { x: 0, y: 0 };
+                let total = 0;
+
+                for (let other of boids) {
+                    let d = this.distance(other);
+                    if (other !== this && d < PERCEPTION_RADIUS) {
+                        steering.x += other.position.x;
+                        steering.y += other.position.y;
+                        total++;
+                    }
+                }
+
+                if (total > 0) {
+                    steering.x /= total;
+                    steering.y /= total;
+                    steering.x -= this.position.x;
+                    steering.y -= this.position.y;
+                    steering = this.setMagnitude(steering, MAX_SPEED);
+                    steering.x -= this.velocity.x;
+                    steering.y -= this.velocity.y;
+                    steering = this.limit(steering, MAX_FORCE);
+                }
+
+                return steering;
+            }
+
+            separation(boids) {
+                let steering = { x: 0, y: 0 };
+                let total = 0;
+
+                for (let other of boids) {
+                    let d = this.distance(other);
+                    if (other !== this && d < SEPARATION_RADIUS) {
+                        let diff = {
+                            x: this.position.x - other.position.x,
+                            y: this.position.y - other.position.y
+                        };
+                        diff.x /= d * d;
+                        diff.y /= d * d;
+                        steering.x += diff.x;
+                        steering.y += diff.y;
+                        total++;
+                    }
+                }
+
+                if (total > 0) {
+                    steering.x /= total;
+                    steering.y /= total;
+                    steering = this.setMagnitude(steering, MAX_SPEED);
+                    steering.x -= this.velocity.x;
+                    steering.y -= this.velocity.y;
+                    steering = this.limit(steering, MAX_FORCE);
+                }
+
+                return steering;
+            }
+
+            followMouse(mx, my, intensity) {
+                let d = Math.sqrt(
+                    Math.pow(this.position.x - mx, 2) + 
+                    Math.pow(this.position.y - my, 2)
+                );
+
+                // 鱼群被鼠标吸引，向鼠标方向移动
+                let steering = {
+                    x: mx - this.position.x,
+                    y: my - this.position.y
+                };
+                
+                // 距离越远吸引力越强，但有上限
+                let factor = Math.min(d / 200, 1) * intensity;
+                steering = this.setMagnitude(steering, STORM_FORCE * factor * 0.8);
+                
+                return steering;
+            }
+
+            flock(boids) {
+                this.acceleration = { x: 0, y: 0 };
+
+                let alignment = this.align(boids);
+                let cohesion = this.cohesion(boids);
+                let separation = this.separation(boids);
+
+                // Weight the forces
+                alignment.x *= 1.0;
+                alignment.y *= 1.0;
+                cohesion.x *= 1.0;
+                cohesion.y *= 1.0;
+                separation.x *= 1.5;
+                separation.y *= 1.5;
+
+                this.acceleration.x += alignment.x + cohesion.x + separation.x;
+                this.acceleration.y += alignment.y + cohesion.y + separation.y;
+
+                // 鱼群跟随鼠标
+                if (stormIntensity > 0) {
+                    let mouseFollow = this.followMouse(stormX, stormY, stormIntensity);
+                    this.acceleration.x += mouseFollow.x;
+                    this.acceleration.y += mouseFollow.y;
+                }
+            }
+
+            update() {
+                this.edges();
+
+                this.velocity.x += this.acceleration.x;
+                this.velocity.y += this.acceleration.y;
+                this.velocity = this.limit(this.velocity, MAX_SPEED);
+
+                this.position.x += this.velocity.x;
+                this.position.y += this.velocity.y;
+
+                this.tailPhase += this.tailSpeed;
+            }
+
+            draw() {
+                const angle = Math.atan2(this.velocity.y, this.velocity.x);
+                const speed = Math.sqrt(this.velocity.x ** 2 + this.velocity.y ** 2);
+                const tailWag = Math.sin(this.tailPhase) * 0.3 * (speed / MAX_SPEED + 0.5);
+                
+                const colors = fishColors[this.colorIndex];
+
+                ctx.save();
+                ctx.translate(this.position.x, this.position.y);
+                ctx.rotate(angle);
+
+                // Glow effect
+                ctx.shadowColor = colors.glow;
+                ctx.shadowBlur = 15;
+
+                // Fish body
+                ctx.beginPath();
+                ctx.moveTo(this.size, 0);
+                ctx.quadraticCurveTo(this.size * 0.3, -this.size * 0.4, -this.size * 0.5, 0);
+                ctx.quadraticCurveTo(this.size * 0.3, this.size * 0.4, this.size, 0);
+                
+                const gradient = ctx.createLinearGradient(-this.size * 0.5, 0, this.size, 0);
+                gradient.addColorStop(0, colors.fin);
+                gradient.addColorStop(0.5, colors.body);
+                gradient.addColorStop(1, colors.body);
+                ctx.fillStyle = gradient;
+                ctx.fill();
+
+                // Tail
+                ctx.shadowBlur = 0;
+                ctx.beginPath();
+                ctx.moveTo(-this.size * 0.4, 0);
+                ctx.lineTo(-this.size * 0.9, -this.size * 0.35 + tailWag * this.size);
+                ctx.lineTo(-this.size * 0.9, this.size * 0.35 + tailWag * this.size);
+                ctx.closePath();
+                ctx.fillStyle = colors.fin;
+                ctx.fill();
+
+                // Dorsal fin
+                ctx.beginPath();
+                ctx.moveTo(this.size * 0.2, -this.size * 0.25);
+                ctx.quadraticCurveTo(0, -this.size * 0.5, -this.size * 0.2, -this.size * 0.25);
+                ctx.fillStyle = colors.fin;
+                ctx.globalAlpha = 0.7;
+                ctx.fill();
+                ctx.globalAlpha = 1;
+
+                // Eye
+                ctx.beginPath();
+                ctx.arc(this.size * 0.5, -this.size * 0.1, this.size * 0.1, 0, Math.PI * 2);
+                ctx.fillStyle = '#ffffff';
+                ctx.fill();
+                ctx.beginPath();
+                ctx.arc(this.size * 0.52, -this.size * 0.1, this.size * 0.05, 0, Math.PI * 2);
+                ctx.fillStyle = '#1a1a2e';
+                ctx.fill();
+
+                ctx.restore();
+            }
+
+            distance(other) {
+                return Math.sqrt(
+                    Math.pow(this.position.x - other.position.x, 2) +
+                    Math.pow(this.position.y - other.position.y, 2)
+                );
+            }
+
+            setMagnitude(vector, mag) {
+                let len = Math.sqrt(vector.x ** 2 + vector.y ** 2);
+                if (len === 0) return { x: 0, y: 0 };
+                return {
+                    x: (vector.x / len) * mag,
+                    y: (vector.y / len) * mag
+                };
+            }
+
+            limit(vector, max) {
+                let len = Math.sqrt(vector.x ** 2 + vector.y ** 2);
+                if (len > max) {
+                    return {
+                        x: (vector.x / len) * max,
+                        y: (vector.y / len) * max
+                    };
+                }
+                return vector;
+            }
+        }
+
+        // Particle system for storm effect
+        class StormParticle {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.radius = Math.random() * 3 + 1;
+                this.angle = Math.random() * Math.PI * 2;
+                this.speed = Math.random() * 2 + 1;
+                this.distance = Math.random() * STORM_RADIUS * 0.8;
+                this.opacity = Math.random() * 0.5 + 0.2;
+                this.rotationSpeed = (Math.random() - 0.5) * 0.05;
+            }
+
+            update(centerX, centerY) {
+                this.angle += this.rotationSpeed;
+                this.x = centerX + Math.cos(this.angle) * this.distance;
+                this.y = centerY + Math.sin(this.angle) * this.distance;
+            }
+
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(255, 100, 100, ${this.opacity * stormIntensity})`;
+                ctx.fill();
+            }
+        }
+
+        const stormParticles = [];
+        for (let i = 0; i < 50; i++) {
+            stormParticles.push(new StormParticle(0, 0));
+        }
+
+        function drawStorm() {
+            if (stormIntensity <= 0) return;
+
+            // 吸引点光晕效果（蓝绿色）
+            const gradient = ctx.createRadialGradient(
+                stormX, stormY, 0,
+                stormX, stormY, STORM_RADIUS
+            );
+            gradient.addColorStop(0, `rgba(78, 205, 196, ${0.5 * stormIntensity})`);
+            gradient.addColorStop(0.3, `rgba(78, 205, 196, ${0.25 * stormIntensity})`);
+            gradient.addColorStop(0.6, `rgba(78, 205, 196, ${0.1 * stormIntensity})`);
+            gradient.addColorStop(1, 'rgba(78, 205, 196, 0)');
+
+            ctx.beginPath();
+            ctx.arc(stormX, stormY, STORM_RADIUS, 0, Math.PI * 2);
+            ctx.fillStyle = gradient;
+            ctx.fill();
+
+            // 中心光点
+            ctx.beginPath();
+            ctx.arc(stormX, stormY, 8, 0, Math.PI * 2);
+            ctx.fillStyle = `rgba(255, 255, 255, ${0.6 * stormIntensity})`;
+            ctx.shadowColor = 'rgba(78, 205, 196, 0.8)';
+            ctx.shadowBlur = 20;
+            ctx.fill();
+            ctx.shadowBlur = 0;
+
+            // 向内收缩的圆环（表示吸引）
+            ctx.strokeStyle = `rgba(78, 205, 196, ${0.2 * stormIntensity})`;
+            ctx.lineWidth = 1;
+            for (let i = 0; i < 4; i++) {
+                const radius = ((Date.now() * 0.001 + i * 0.25) % 1) * STORM_RADIUS;
+                ctx.beginPath();
+                ctx.arc(stormX, stormY, STORM_RADIUS - radius, 0, Math.PI * 2);
+                ctx.globalAlpha = 1 - radius / STORM_RADIUS;
+                ctx.stroke();
+            }
+            ctx.globalAlpha = 1;
+        }
+
+        function drawBubbles() {
+            const time = Date.now() * 0.001;
+            ctx.fillStyle = 'rgba(200, 230, 255, 0.15)';
+            
+            for (let i = 0; i < 20; i++) {
+                const x = (Math.sin(time * 0.3 + i * 0.5) * 0.5 + 0.5) * width;
+                const y = ((time * 0.05 + i * 0.1) % 1.2 - 0.1) * height;
+                const size = 2 + Math.sin(time + i) * 1;
+                
+                ctx.beginPath();
+                ctx.arc(x, y, size, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            stormX = width / 2;
+            stormY = height / 2;
+        }
+
+        function init() {
+            resize();
+            
+            for (let i = 0; i < BOID_COUNT; i++) {
+                boids.push(new Boid());
+            }
+        }
+
+        function animate() {
+            // Clear with deep ocean gradient
+            const bgGradient = ctx.createLinearGradient(0, 0, 0, height);
+            bgGradient.addColorStop(0, '#030d1a');
+            bgGradient.addColorStop(0.5, '#051428');
+            bgGradient.addColorStop(1, '#020a14');
+            ctx.fillStyle = bgGradient;
+            ctx.fillRect(0, 0, width, height);
+
+            // Draw ambient bubbles
+            drawBubbles();
+
+            // Update storm position and intensity
+            const timeSinceMove = Date.now() - lastMouseMove;
+            
+            if (timeSinceMove > 500) {
+                stormIntensity = Math.min(1, stormIntensity + 0.01);
+                stormActive = true;
+            } else {
+                stormX += (mouseX - stormX) * 0.1;
+                stormY += (mouseY - stormY) * 0.1;
+                stormIntensity = Math.max(0.3, Math.min(1, stormIntensity + 0.02));
+                stormActive = true;
+            }
+
+            // Update storm indicator
+            document.getElementById('stormIndicator').classList.toggle('active', stormActive && stormIntensity > 0.5);
+
+            // Draw storm
+            drawStorm();
+
+            // Update and draw boids
+            for (let boid of boids) {
+                boid.flock(boids);
+            }
+
+            for (let boid of boids) {
+                boid.update();
+                boid.draw();
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        // Event listeners
+        window.addEventListener('resize', resize);
+
+        canvas.addEventListener('mousemove', (e) => {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+            lastMouseMove = Date.now();
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            mouseX = e.touches[0].clientX;
+            mouseY = e.touches[0].clientY;
+            lastMouseMove = Date.now();
+        });
+
+        // Initialize and start
+        init();
+        animate();
+    </script>
+</body>
+</html>
